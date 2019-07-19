@@ -2,12 +2,25 @@
 title: "Vignette"
 author: "Dan Bunis"
 date: "7/18/2019"
-output: html_document
+output:
+  html_document:
+    toc: true
+    theme: united
 ---
 
 ```{r, echo=FALSE}
 knitr::opts_chunk$set(echo=TRUE, error=FALSE, warning=FALSE, message=FALSE)
 ```
+
+# Title
+
+Notes:
+
+- Exploration code chunks will be removed
+- SingleR section is currently baren as I do not know how to run this version of the code on an annotated database.
+- Commented-out install lines can be moved to a separate chunk before the final version.
+
+Question: How do I run SingleR utilizing the new (or old) annotated databases?
 
 ## Download Raw PBMC data fomr 10X website
 
@@ -25,11 +38,7 @@ sce.pbmc <- read10xCounts(fname, col.names=TRUE)
 ```
 
 ```{r Exploration1}
-# devtools::install_github("dtm2451/DittoSeq")
-library(DittoSeq)
 sce.pbmc
-str(sce.pbmc, max.level = 3)
-get.metas("sce.pbmc")
 ```
 
 ## Setup
@@ -50,7 +59,7 @@ location <- mapIds(EnsDb.Hsapiens.v86, keys=rowData(sce.pbmc)$ID,
 sce.pbmc
 ```
 
-#### Determine Cells from empty droplets
+#### Distinguish Cells from empty droplets
 
 ```{r cell-detection}
 set.seed(100)
@@ -85,7 +94,7 @@ We removed 311 cells with this metric and now have 3922 cells
 #### Normalize cells
 
 ```{r normalization}
-BiocManager::install("scran")
+# BiocManager::install("scran")
 library(scran)
 set.seed(1000)
 clusters <- quickCluster(sce.pbmc)
@@ -97,7 +106,9 @@ sce.pbmc <- normalize(sce.pbmc)
 sce.pbmc
 ```
 
-#### Select features for deminsionality reduction and clustering
+#### Run Dimensionality Reduction: PCA, TSNE, and UMAP
+
+First, select features.
 
 ```{r feature-selection}
 fit.pbmc <- trendVar(sce.pbmc, use.spikes=FALSE)
@@ -106,7 +117,7 @@ o <- order(dec.pbmc$bio, decreasing=TRUE)
 chosen.hvgs <- rownames(dec.pbmc)[head(o, 2000)]
 ```
 
-#### Run Dimensionality Reduction: PCA, TSNE, and UMAP
+Then, run.
 
 ```{r dimensionality-reduction}
 set.seed(10000)
@@ -120,10 +131,6 @@ set.seed(1000000)
 # BiocManager::install("uwot")
 # install.packages("uwot")
 sce.pbmc <- runUMAP(sce.pbmc, use_dimred="PCA")
-```
-
-```{r Exploration6}
-sce.pbmc
 ```
 
 #### Run Clustering
