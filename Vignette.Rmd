@@ -22,9 +22,9 @@ Notes:
 
 Question: How do I run SingleR utilizing the new (or old) annotated databases?
 
-## Download Raw PBMC data fomr 10X website
+## Download Raw PBMC data from the 10X website
 
-```{r loading}
+```{r downloading}
 # BiocManager::install("BiocFileCache")
 library(BiocFileCache)
 bfc <- BiocFileCache("raw_data", ask = FALSE)
@@ -32,18 +32,29 @@ raw.path <- bfcrpath(bfc, file.path("http://cf.10xgenomics.com/samples",
     "cell-exp/2.1.0/pbmc4k/pbmc4k_raw_gene_bc_matrices.tar.gz"))
 untar(raw.path, exdir=file.path(tempdir(), "pbmc4k"))
 # BiocManager::install("DropletUtils")
+```
+
+## Setup
+
+Here, we will do some preparation of the dataset by:
+
+- Load in the data by importing into R as a SingleCellExperiment object
+- Perform QC selection on our cells
+- Run dimensionality reduction and clustering
+
+#### Import as a SingleCellExperiment
+
+SingleCellExperiment is [Description]
+
+```{r reading into SingleCellExperiment}
 library(DropletUtils)
 fname <- file.path(tempdir(), "pbmc4k/raw_gene_bc_matrices/GRCh38")
 sce.pbmc <- read10xCounts(fname, col.names=TRUE)
 ```
 
-```{r Exploration1}
-sce.pbmc
-```
+#### Annotate genes
 
-## Setup
-
-#### Annotate genes with SYMBOL names rather than the Ensembl Gene ID thwy start as, and add mapping information
+Sets the with SYMBOL names rather than the Ensembl Gene ID thwy start as, and add mapping information
 
 ```{r gene-annotation}
 # BiocManager::install("scater")
@@ -51,15 +62,13 @@ library(scater)
 rownames(sce.pbmc) <- uniquifyFeatureNames(rowData(sce.pbmc)$ID, rowData(sce.pbmc)$Symbol)
 # BiocManager::install("EnsDb.Hsapiens.v86")
 library(EnsDb.Hsapiens.v86)
-location <- mapIds(EnsDb.Hsapiens.v86, keys=rowData(sce.pbmc)$ID, 
+location <- mapIds(EnsDb.Hsapiens.v86, keys=rowData(sce.pbmc)$ID,
     column="SEQNAME", keytype="GENEID")
 ```
 
-```{r Exploration2}
-sce.pbmc
-```
+#### Distinguish High Quality Cells
 
-#### Distinguish Cells from empty droplets
+[Description]
 
 ```{r cell-detection}
 set.seed(100)
@@ -67,29 +76,16 @@ e.out <- emptyDrops(counts(sce.pbmc))
 sce.pbmc <- sce.pbmc[,which(e.out$FDR <= 0.001)]
 ```
 
-```{r Exploration3}
-sce.pbmc
-```
-
-Notice that now there are only 4233 columns / cells in the object
-
-#### Determine useable / live / high quality cells
-
 ```{r quality-control}
 # Calculate QC statistics
 sce.pbmc <- calculateQCMetrics(sce.pbmc, feature_controls=list(Mito=which(location=="MT")))
-  sce.pbmc_hold <- sce.pbmc
 # Determine outliers for total reads percent.mito per cell (makes a logical the length of our #cells)
 high.mito <- isOutlier(sce.pbmc$pct_counts_Mito, nmads=3, type="higher")
 # Remove cells with high mitochondrial read percentages
 sce.pbmc <- sce.pbmc[,!high.mito]
 ```
 
-```{r Exploration4}
-sce.pbmc
-```
-
-We removed 311 cells with this metric and now have 3922 cells
+We arrive at `r dim(sce.pbmc)[2]` quality cells.
 
 #### Normalize cells
 
@@ -100,10 +96,6 @@ set.seed(1000)
 clusters <- quickCluster(sce.pbmc)
 sce.pbmc <- computeSumFactors(sce.pbmc, min.mean=0.1, cluster=clusters)
 sce.pbmc <- normalize(sce.pbmc)
-```
-
-```{r Exploration5}
-sce.pbmc
 ```
 
 #### Run Dimensionality Reduction: PCA, TSNE, and UMAP
@@ -117,7 +109,7 @@ o <- order(dec.pbmc$bio, decreasing=TRUE)
 chosen.hvgs <- rownames(dec.pbmc)[head(o, 2000)]
 ```
 
-Then, run.
+Then, run dimensionality reductions.
 
 ```{r dimensionality-reduction}
 set.seed(10000)
@@ -141,19 +133,17 @@ clust <- igraph::cluster_walktrap(g)$membership
 sce.pbmc$cluster <- factor(clust)
 ```
 
-```{r Exploration7}
-sce.pbmc
-```
-
-```{r save, echo = FALSE, eval = FALSE, include=FALSE}
-saveRDS("sce.pbmc_mid.rds")
+```{r save, echo = FALSE, eval = TRUE, include=FALSE}
+saveRDS(sce.pbmc, "sce.pbmc_mid.rds")
 ```
 
 ```{r load, echo = FALSE, eval = FALSE, include=FALSE}
 sce.pbmc <- readRDS("sce.pbmc_mid.rds")
 ```
 
-## Before we start, what do we have?
+## Run SingleR
+
+Before we start, what do we have?
 
 ```{r}
 library(DittoSeq)
@@ -162,8 +152,6 @@ DBDimPlot("cluster", do.letter = FALSE)
 ```
 
 We have a dataset that is broken into 12 clusters, but we do not know what each cluster represents.
-
-## Determine Celltypes
 
 Question: How do I run SingleR utilizing a known database?
 The below code is obviously wrong.
