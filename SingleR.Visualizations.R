@@ -1,16 +1,51 @@
-#' Plot a scatter plot of a single cell vs. a reference sample
+# NOTES from Dan:
+# 
+# DrawScatter compares a cell to an individual cell/sample from the reference dataset.  The old method
+# involved picking an index # from a single table full of all the samples.  In the new SingleR.train structure,
+# data for cells/samples of the same type are stored separately so the previous indexing method does not work.
+# My current fix: require provision of the original counts/logcounts dataframe that was used to generate the
+# training.
+# Potential alternative: Utilize the trained data, and make the index refer to which of the trained cells of
+# a given type should be used
+# 
+# DrawHeatmap works with little updating required.  I mainly just changed T/F to TRUE/FALSE here and pointed the
+# pheatmap calls explicitly to the pheatmap package in case it has not already been loaded into the namespace.
+# 
+# DrawBoxPlot update is in progress
+
+
+#' Plot a scatter plot of a single cell vs. a single reference cell/sample
 #'
-#' @param sc_data the single-cell RNA-seq data set as a matrix with genes as rownames.
-#' @param cell_id a number of the single cell to use
-#' @param ref the reference dataset with genes as rownames. Gene names must be in the same format as the single cell data (if sc_data uses genes symbols, ref_data must have the same)
+#' @param sc_data Similar to SinlgeR test input, a numeric matrix of single-cell expression values (usually
+#' log-transformed or otherwise variance-stabilized), where rows are genes and columns are cells.
+#' Alternatively, a \linkS4class{SingleCellExperiment} object containing such a matrix.
+#' @param cell_id a number indicating which single cell to use.
+#' Alternatively, the name of the cell.
+#' @param refdata Similar to SinlgeR training input, a numeric matrix of expression values. 
+#' Alternatively, a \linkS4class{SingleCellExperiment} object containing such a matrix.
+#' This should have the same rows as or a subset of the rows in \code{test}.
 #' @param sample_id a number of the sample to use
+#' @param assay.type An integer scalar or string specifying the assay of \code{sc_data} or \code{refdata} containing the relevant expression matrix,
+#' if \code{sc_data} or \code{refdata} is a \linkS4class{SingleCellExperiment} object.
 #'
-#' @return a ggplot
-SingleR.DrawScatter = function(sc_data, cell_id, ref,sample_id) {
+#' @return a gpplot scatterplot of the expression of indidivual genes, with linear regression and Spearman pariwaise correlation coefficient
+#' 
+#' @export
+#' @importFrom ggplot2 ggplot geom_point geom_smooth theme xlab ylab ggtitle theme_classic
+SingleR.DrawScatter = function(sc_data, cell_id, refdata,sample_id, assay.type = 1) {
+  if (is(sc_data, "SingleCellExperiment")) {
+    sc_data <- assay(sc_data, assay.type)
+  }
+  if (is(refdata, "SingleCellExperiment")) {
+    refdata <- assay(refdata, assay.type)
+  }
+  if (is(refdata, "list")) {
+    refdata <- refdata$data
+  }
   rownames(sc_data) = tolower(rownames(sc_data))
-  rownames(ref$data) = tolower(rownames(ref$data))
-  A = intersect(rownames(sc_data),rownames(ref$data))
-  df = data.frame(sc_data[A,cell_id],ref$data[A,sample_id])
+  rownames(refdata) = tolower(rownames(refdata))
+  A = intersect(rownames(sc_data),rownames(refdata))
+  df = data.frame(sc_data[A,cell_id],refdata[A,sample_id])
   colnames(df) = c('x','y')
   ggplot(df,aes(x=x, y=y)) + geom_point(size=0.5,alpha=0.5,color='blue') +
     geom_smooth(method='lm',color='red')+
@@ -21,7 +56,7 @@ SingleR.DrawScatter = function(sc_data, cell_id, ref,sample_id) {
 
 #' Plot a heatmap of the scores for all the single cells
 #'
-#' @param SingleR the output from the SingleR function
+#' @param SingleR.results the output from a run of the SingleR/classifySingleR
 #' @param cells.use single cells to present, if NULL all single cells presented
 #' @param types.use cell types to present, if NULL all cell types presented
 #' @param clusters a clustering to present as annotation in the heatmap
@@ -29,12 +64,13 @@ SingleR.DrawScatter = function(sc_data, cell_id, ref,sample_id) {
 #' @param normalize if TRUE scores are normalized to a 0-1 scale.
 #' @param order.by.clusters if TRUE columns are ordered by the input clusters, and are not clustered again
 #' @param cells_order an input order for the column
-#' @param silent if TRUE do not draw the plot  
-SingleR.DrawHeatmap = function(SingleR,cells.use = NULL, types.use = NULL,
-                               clusters=NULL,top.n=40,normalize=T,
-                               order.by.clusters=F,cells_order=NULL,silent=F,
+#' @param silent if TRUE do not draw the plot
+#' @importFrom pheatmap pheatmap
+SingleR.DrawHeatmap = function(SingleR.results,cells.use = NULL, types.use = NULL,
+                               clusters=NULL,top.n=40,normalize=TRUE,
+                               order.by.clusters=FALSE,cells_order=NULL,silent=FALSE,
                                fontsize_row=9,...) {
-  scores = SingleR$scores
+  scores = SingleR.results$scores
   if (!is.null(cells.use)) {
     scores = scores[cells.use,]
   }
@@ -48,14 +84,13 @@ SingleR.DrawHeatmap = function(SingleR,cells.use = NULL, types.use = NULL,
   
   data = as.matrix(scores)
   
-  if (normalize==T) {
+  if (normalize==TRUE) {
     mmax = rowMaxs(data)
     mmin = rowMins(data)
     data = (data-mmin)/(mmax-mmin)
     data = data^3
   }
   data = data[,m>(thres-1e-6)]
-  
   
   data = t(data)
   
@@ -72,30 +107,30 @@ SingleR.DrawHeatmap = function(SingleR,cells.use = NULL, types.use = NULL,
     annotation_colors = additional_params$annotation_colors
   }
   clustering_method = 'ward.D2'
-  if (order.by.clusters==T) {
+  if (order.by.clusters==TRUE) {
     data = data[,order(clusters$Clusters)]
-    clusters = clusters[order(clusters$Clusters),,drop=F]
-    pheatmap(data,border_color=NA,show_colnames=FALSE,
-             clustering_method=clustering_method,fontsize_row=fontsize_row,
-             annotation_col = clusters,cluster_cols = F,silent=silent, 
-             annotation_colors=annotation_colors)
+    clusters = clusters[order(clusters$Clusters),,drop=FALSE]
+    pheatmap::pheatmap(data,border_color=NA,show_colnames=FALSE,
+                       clustering_method=clustering_method,fontsize_row=fontsize_row,
+                       annotation_col = clusters,cluster_cols = FALSE,silent=silent, 
+                       annotation_colors=annotation_colors)
   } else if (!is.null(cells_order)) {
     data = data[,cells_order]
-    clusters = clusters[cells_order,,drop=F]
-    pheatmap(data,border_color=NA,show_colnames=FALSE,
-             clustering_method=clustering_method,fontsize_row=fontsize_row,
-             annotation_col = clusters,cluster_cols = F,silent=silent, 
-             annotation_colors=annotation_colors)
+    clusters = clusters[cells_order,,drop=FALSE]
+    pheatmap::pheatmap(data,border_color=NA,show_colnames=FALSE,
+                       clustering_method=clustering_method,fontsize_row=fontsize_row,
+                       annotation_col = clusters,cluster_cols = FALSE,silent=silent, 
+                       annotation_colors=annotation_colors)
   } else {
     if (!is.null(clusters)) {
-      pheatmap(data,border_color=NA,show_colnames=FALSE,
-               clustering_method=clustering_method,fontsize_row=fontsize_row,
-               annotation_col = clusters,silent=silent, 
-               annotation_colors=annotation_colors)
+      pheatmap::pheatmap(data,border_color=NA,show_colnames=FALSE,
+                         clustering_method=clustering_method,fontsize_row=fontsize_row,
+                         annotation_col = clusters,silent=silent, 
+                         annotation_colors=annotation_colors)
     } else {
-      pheatmap(data[,sample(ncol(data))],border_color=NA,show_colnames=FALSE,
-               clustering_method=clustering_method,fontsize_row=fontsize_row,
-               silent=silent, annotation_colors=annotation_colors)
+      pheatmap::pheatmap(data[,sample(ncol(data))],border_color=NA,show_colnames=FALSE,
+                         clustering_method=clustering_method,fontsize_row=fontsize_row,
+                         silent=silent, annotation_colors=annotation_colors)
       
     }
   }
