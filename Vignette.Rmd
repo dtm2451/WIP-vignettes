@@ -10,17 +10,11 @@ output:
 
 ```{r, echo=FALSE}
 knitr::opts_chunk$set(echo=TRUE, error=FALSE, warning=FALSE, message=FALSE)
+# BiocManager::install("dtm2451/SingleR@prune-to-heatmap")
+# BiocManager::install("dtm2451/DittoSeq")
 ```
 
-# Title
-
-Notes:
-
-- Exploration code chunks will be removed
-- SingleR section is currently baren as I do not know how to run this version of the code on an annotated database.
-- Commented-out install lines can be moved to a separate chunk before the final version.
-
-Question: How do I run SingleR utilizing the new (or old) annotated databases?
+# Title: WIP
 
 ## Download Raw PBMC data from the 10X website
 
@@ -133,14 +127,6 @@ clust <- igraph::cluster_walktrap(g)$membership
 sce.pbmc$cluster <- factor(clust)
 ```
 
-```{r save, echo = FALSE, eval = TRUE, include=FALSE}
-saveRDS(sce.pbmc, "sce.pbmc_mid.rds")
-```
-
-```{r load, echo = FALSE, eval = FALSE, include=FALSE}
-sce.pbmc <- readRDS("sce.pbmc_mid.rds")
-```
-
 ## Run SingleR
 
 Before we start, what do we have?
@@ -151,14 +137,98 @@ DEFAULT <- "sce.pbmc"
 DBDimPlot("cluster", do.letter = FALSE)
 ```
 
-We have a dataset that is broken into 12 clusters, but we do not know what each cluster represents.
-
-Question: How do I run SingleR utilizing a known database?
-The below code is obviously wrong.
+First, we need to load in reference datasets.  This sis human data, and there are two included in the SingleR package that we can use.  We can use the code below to download (and cache them for future use).
 
 ```{r}
-devtools::install_github("LTLA/SingleR")
 library(SingleR)
-singler.results <- SingleR(sce.pbmc, sce.pbmc, labels = sce.pbmc$cluster, method = "single")
-singler.results
+blueprint.encode <- BlueprintEncodeData()
+hpca <- HumanPrimaryCellAtlasData()
+```
+
+Now we can compare our cells to the references
+
+```{r}
+#Run SingleR
+singler.results.fine <- SingleR(test=sce.pbmc, ref=blueprint.encode, labels=blueprint.encode$label.fine, genes="de")
+singler.results.main <- SingleR(test=sce.pbmc, ref=blueprint.encode, labels=blueprint.encode$label.main, genes="de")
+```
+
+Now if we want to check the scoring of an individual cell, we can compare its transcriptome to that of the database.  The first cell was labeled as `r singler.results.fine$labels[1]` (`singler.results.fine$labels[1]`).
+
+```{r}
+keep <- !pruneScores(scores = singler.results.fine$scores, min.diff = 0.1, nmads = 3)
+DBDimPlot(singler.results.fine$labels, do.letter = FALSE)
+DBDimPlot(singler.results.fine$labels, do.letter = FALSE,
+    cells.use = keep,
+    colors = c(1:24)[levels(as.factor(singler.results.fine$labels)) %in%
+levels(as.factor(singler.results.fine$labels[keep]))])
+
+plotScoreHeatmap(results = singler.results.fine, max.labels = 10,
+                 clusters = singler.results.fine$labels, show.pruned = TRUE,
+                 prune.calls = as.character(!keep))
+```
+
+```{r}
+keep <- !pruneScores(scores = singler.results.main$scores, min.diff = 0.1, nmads = 3)
+DBDimPlot(singler.results.main$labels, do.letter = FALSE)
+DBDimPlot(singler.results.main$labels, do.letter = FALSE,
+    cells.use = keep,
+    colors = c(1:24)[levels(as.factor(singler.results.main$labels)) %in%
+levels(as.factor(singler.results.main$labels[keep]))])
+
+plotScoreHeatmap(results = singler.results.main, max.labels = 10,
+                 clusters = singler.results.main$labels, show.pruned = TRUE,
+                 prune.calls = as.character(!keep))
+```
+
+```{r}
+# Dan's scoring mod
+pruneScores <- function(scores, min.diff.vs.median = 0.05, nmads=3, min.percent.diff.vs.next = 0.05) {
+    if (is(scores, "DataFrame")){
+      scores <- scores$scores
+    }
+
+    maxed <- rowMaxs(DelayedArray(scores))
+    delta <- maxed - rowMedians(scores)
+    keep <- delta >= min.diff.vs.median
+    keep <- keep & (rowSums(scores/maxed > (1-min.percent.diff.vs.next)) < 2)
+
+    best <- max.col(scores)
+    by.label <- split(which(keep), best[keep])
+
+    for (l in by.label) {
+        current <- maxed[l]
+        med <- median(current)
+        MAD <- mad(current, center=med)
+        keep[l] <- (current >= med - nmads * MAD)
+    }
+
+    !keep
+}
+```
+
+```{r}
+keep <- !pruneScores(scores = singler.results.fine$scores, min.diff.vs.median = 0.1, min.percent.diff.vs.next = 0.01, nmads = 3)
+DBDimPlot(singler.results.fine$labels, do.letter = FALSE)
+DBDimPlot(singler.results.fine$labels, do.letter = FALSE,
+    cells.use = keep,
+    colors = c(1:24)[levels(as.factor(singler.results.fine$labels)) %in%
+levels(as.factor(singler.results.fine$labels[keep]))])
+
+plotScoreHeatmap(results = singler.results.fine, max.labels = 10,
+                 clusters = singler.results.fine$labels, show.pruned = TRUE,
+                 prune.calls = as.character(!keep))
+```
+
+```{r}
+keep <- !pruneScores(scores = singler.results.main$scores, min.diff.vs.median = 0.1, min.percent.diff.vs.next = 0.01, nmads = 3)
+DBDimPlot(singler.results.main$labels, do.letter = FALSE)
+DBDimPlot(singler.results.main$labels, do.letter = FALSE,
+    cells.use = keep,
+    colors = c(1:24)[levels(as.factor(singler.results.main$labels)) %in%
+levels(as.factor(singler.results.main$labels[keep]))])
+
+plotScoreHeatmap(results = singler.results.main, max.labels = 10,
+                 clusters = singler.results.main$labels, show.pruned = TRUE,
+                 prune.calls = as.character(!keep))
 ```
