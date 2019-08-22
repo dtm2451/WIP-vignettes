@@ -2,3 +2,4 @@
 *.gz
 *.rds
 *.sqlite
+.DS_Store
