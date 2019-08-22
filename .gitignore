@@ -1,0 +1,4 @@
+*.rda
+*.gz
+*.rds
+*.sqlite
