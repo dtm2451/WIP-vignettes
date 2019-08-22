@@ -155,79 +155,31 @@ singler.results.main <- SingleR(test=sce.pbmc, ref=blueprint.encode, labels=blue
 
 Now if we want to check the scoring of an individual cell, we can compare its transcriptome to that of the database.  The first cell was labeled as `r singler.results.fine$labels[1]` (`singler.results.fine$labels[1]`).
 
+### Check comparison of cell to reference sample with plot CellVsReference
+
+### Check scoreing of cells overall with plotScoresHeatmap
+
+### See if certain calls shoul dbe pruned with pruneScores
+
 ```{r}
-keep <- !pruneScores(scores = singler.results.fine$scores, min.diff = 0.1, nmads = 3)
+keep <- !pruneScores(results = singler.results.fine, min.diff.next = 0.1, nmads = 3)
 DBDimPlot(singler.results.fine$labels, do.letter = FALSE)
 DBDimPlot(singler.results.fine$labels, do.letter = FALSE,
     cells.use = keep,
     colors = c(1:24)[levels(as.factor(singler.results.fine$labels)) %in%
 levels(as.factor(singler.results.fine$labels[keep]))])
-
 plotScoreHeatmap(results = singler.results.fine, max.labels = 10,
                  clusters = singler.results.fine$labels, show.pruned = TRUE,
                  prune.calls = as.character(!keep))
 ```
 
 ```{r}
-keep <- !pruneScores(scores = singler.results.main$scores, min.diff = 0.1, nmads = 3)
+keep <- !pruneScores(results = singler.results.main, min.diff.next = 0.1, nmads = 3)
 DBDimPlot(singler.results.main$labels, do.letter = FALSE)
 DBDimPlot(singler.results.main$labels, do.letter = FALSE,
     cells.use = keep,
     colors = c(1:24)[levels(as.factor(singler.results.main$labels)) %in%
 levels(as.factor(singler.results.main$labels[keep]))])
-
-plotScoreHeatmap(results = singler.results.main, max.labels = 10,
-                 clusters = singler.results.main$labels, show.pruned = TRUE,
-                 prune.calls = as.character(!keep))
-```
-
-```{r}
-# Dan's scoring mod
-pruneScores <- function(scores, min.diff.vs.median = 0.05, nmads=3, min.percent.diff.vs.next = 0.05) {
-    if (is(scores, "DataFrame")){
-      scores <- scores$scores
-    }
-
-    maxed <- rowMaxs(DelayedArray(scores))
-    delta <- maxed - rowMedians(scores)
-    keep <- delta >= min.diff.vs.median
-    keep <- keep & (rowSums(scores/maxed > (1-min.percent.diff.vs.next)) < 2)
-
-    best <- max.col(scores)
-    by.label <- split(which(keep), best[keep])
-
-    for (l in by.label) {
-        current <- maxed[l]
-        med <- median(current)
-        MAD <- mad(current, center=med)
-        keep[l] <- (current >= med - nmads * MAD)
-    }
-
-    !keep
-}
-```
-
-```{r}
-keep <- !pruneScores(scores = singler.results.fine$scores, min.diff.vs.median = 0.1, min.percent.diff.vs.next = 0.01, nmads = 3)
-DBDimPlot(singler.results.fine$labels, do.letter = FALSE)
-DBDimPlot(singler.results.fine$labels, do.letter = FALSE,
-    cells.use = keep,
-    colors = c(1:24)[levels(as.factor(singler.results.fine$labels)) %in%
-levels(as.factor(singler.results.fine$labels[keep]))])
-
-plotScoreHeatmap(results = singler.results.fine, max.labels = 10,
-                 clusters = singler.results.fine$labels, show.pruned = TRUE,
-                 prune.calls = as.character(!keep))
-```
-
-```{r}
-keep <- !pruneScores(scores = singler.results.main$scores, min.diff.vs.median = 0.1, min.percent.diff.vs.next = 0.01, nmads = 3)
-DBDimPlot(singler.results.main$labels, do.letter = FALSE)
-DBDimPlot(singler.results.main$labels, do.letter = FALSE,
-    cells.use = keep,
-    colors = c(1:24)[levels(as.factor(singler.results.main$labels)) %in%
-levels(as.factor(singler.results.main$labels[keep]))])
-
 plotScoreHeatmap(results = singler.results.main, max.labels = 10,
                  clusters = singler.results.main$labels, show.pruned = TRUE,
                  prune.calls = as.character(!keep))
